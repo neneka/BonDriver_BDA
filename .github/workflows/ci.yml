@@ -1,0 +1,78 @@
+name: Build BonDriver_BDA
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        configuration: [Release_Static]
+        platform: [x64]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      # https://github.com/actions/runner-images/issues/9873#issuecomment-2116034596
+      - name: Delete components
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToRemove= @(
+              "Microsoft.VisualStudio.Component.VC.ATL"
+          )
+          [string]$workloadArgs = $componentsToRemove | ForEach-Object {" --remove " +  $_}
+          $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+          # should be run twice
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+
+      - name: Install components
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToRemove= @(
+            "Microsoft.VisualStudio.Component.VC.v141.ATL"
+            "Microsoft.VisualStudio.Component.VC.14.29.16.11.ATL"
+          )
+          [string]$workloadArgs = $componentsToRemove | ForEach-Object {" --add " +  $_}
+          $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+          # should be run twice
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+
+      - name: Prepare
+        run: |
+          # https://www.kilinbox.net/2024/05/4k-mmts.html
+          git clone https://github.com/radi-sh/BDASpecial-PlexPX.git --depth 1
+          move BDASpecial-PlexPX\BdaSpecials\PlexPX BdaSpecials\
+          git clone https://github.com/radi-sh/Rijndael4plex.git --depth 1
+          move Rijndael4plex\aes .
+          git clone https://github.com/radi-sh/BDASpecial-IT35.git --depth 1
+          move BDASpecial-IT35\CardReader .
+          move BDASpecial-IT35\BdaSpecials\IT35 BdaSpecials\
+          git clone https://github.com/radi-sh/BDASpecial-DD.git --depth 1
+          move BDASpecial-DD\BdaSpecials\DD BdaSpecials\
+          git clone https://github.com/radi-sh/BDASpecial-LWire.git --depth 1
+          move BDASpecial-LWire\BdaSpecials\LWire BdaSpecials\
+
+      - name: Build
+        working-directory: ${{env.GITHUB_WORKSPACE}}
+        run: msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} BonDriver_BDA.sln
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BonDriver_BDA-${{ matrix.configuration }}-${{ matrix.platform }}
+          path: |
+            x64
+            !**/obj/**
